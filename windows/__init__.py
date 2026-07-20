@@ -6,3 +6,13 @@ from . import win_primitives
 from . import win_hevd_classes
 from . import win_loldrivers
 from . import win_poc_gen
+from . import win_wdf_analysis
+from . import win_dacl_analysis
+from . import win_fastio
+from . import win_report
+from . import win_signing
+from . import win_irp_audit
+from . import win_version
+from . import win_pool_spray
+from . import win_minifilter
+from . import win_chain
