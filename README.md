@@ -184,8 +184,6 @@ Full static triage for Windows kernel drivers. Saves report to `~/.logs/WinDrive
 #### Exploit Primitive Finder
 **`windows/win_primitives.py`**
 
-Per-IOCTL detection of arbitrary R/W and exploit primitives. References Connor McGarr, knifecoat IORING, windows-internals.com, whiteknightlabs.
-
 | Primitive | Severity |
 |---|---|
 | Write-What-Where (user-controlled dst + value) | CRITICAL |
@@ -237,24 +235,178 @@ Cross-references binary against [loldrivers.io](https://www.loldrivers.io/) data
 
 ---
 
-#### Generate POC (C + Python)
+#### WDF Deep Analysis
+**`windows/win_wdf_analysis.py`**
+
+Full WDF/KMDF callback resolution beyond basic `WdfVersionBind` detection.
+
+- Resolves `WDF_IO_QUEUE_CONFIG` callback table: `EvtIoDefault`, `EvtIoRead`, `EvtIoWrite`, `EvtIoDeviceControl`, `EvtIoInternalDeviceControl`, `EvtIoStop`, `EvtIoCanceledOnQueue`
+- Dispatch type detection: Sequential (serialized), Parallel (race-prone), Manual
+- Traces buffer access through WDF wrapper APIs: `WdfRequestRetrieveInputBuffer`, `WdfRequestRetrieveOutputBuffer`, `WdfRequestRetrieveInputMemory`, `WdfRequestRetrieveOutputMemory`, `WdfRequestRetrieveUnsafeUserInputBuffer`
+- Flags missing size validation on `WdfRequestRetrieveInputBuffer` calls
+- Parallel queue + shared state = race condition warning
+
+---
+
+#### DACL Analysis
+**`windows/win_dacl_analysis.py`**
+
+Parses device object security descriptors and SDDL strings to assess access control.
+
+- `IoCreateDeviceSecure` SDDL extraction and decode
+- Flags overly permissive DACLs: `D:(A;;GA;;;WD)` (Everyone), `D:(A;;GA;;;BU)` (Users), null DACL
+- `IoCreateDevice` without `IoCreateDeviceSecure` flagged
+- Manual ACL setup detection: `ObSetSecurityDescriptorInfo`, `RtlCreateSecurityDescriptor`
+- Cross-references DACL permissiveness against detected primitives for risk scoring
+
+---
+
+#### FastIO Dispatch Analysis
+**`windows/win_fastio.py`**
+
+Enumerates `FAST_IO_DISPATCH` handlers - the parallel dispatch path to IRP.
+
+- Detects `DriverObject->FastIoDispatch` assignment
+- Resolves function pointers: `FastIoCheckIfPossible`, `FastIoRead`, `FastIoWrite`, `FastIoDeviceControl`, `MdlRead`, `MdlWrite`
+- Applies vulnerability analysis to FastIO handlers (same checks as IRP handlers)
+- Flags FastIO handlers with weaker validation than their IRP counterparts
+
+---
+
+#### IRP Completion Audit
+**`windows/win_irp_audit.py`**
+
+Audits IRP lifecycle for completion bugs.
+
+- Missing `IoCompleteRequest` on error paths
+- Double completion: `IoCompleteRequest` on already-completed or forwarded IRP (UAF)
+- `IoStatus.Information` larger than `OutputBufferLength` (kernel info leak)
+- `STATUS_SUCCESS` without setting `IoStatus.Information`
+- `IoCallDriver`/`IofCallDriver` then completing same IRP
+
+---
+
+#### Signing & Certificate Analysis
+**`windows/win_signing.py`**
+
+Analyzes Authenticode signatures for BYOVD viability assessment.
+
+- Signer name, certificate chain, and timestamp extraction
+- Cross-signed vs. WHQL-signed detection
+- SHA-1 vs SHA-256 hash algorithm identification
+- EV certificate presence
+- Microsoft Vulnerable Driver Blocklist (DriverSiPolicy.p7b) cross-reference
+- Revocation status and timestamp-based bypass detection
+- Known-abused signer cross-reference against LOLDrivers database
+
+---
+
+#### Version-Aware Analysis
+**`windows/win_version.py`**
+
+Detects target Windows version from PE metadata and adjusts analysis.
+
+- `IMAGE_OPTIONAL_HEADER` OS version + linker version detection
+- Version-conditional code path identification
+- Flags deprecated/removed APIs for specific Windows versions
+- Mitigation awareness: VBS, HVCI, KDP, KVAS/KVA Shadow impact on exploit viability
+- EPROCESS offset table adjustment for POC generation per detected build
+
+---
+
+#### Pool Spray Feasibility
+**`windows/win_pool_spray.py`**
+
+Analyzes pool allocation characteristics for overflow/UAF exploitation.
+
+- Pool type classification: `NonPagedPool`, `PagedPool`, `NonPagedPoolNx`, `ExAllocatePool2` (segment heap)
+- Allocation size and pool tag extraction
+- Known-exploitable size flagging (0x40, 0x60, 0x200 on segment heap vs. pre-segment-heap)
+- Spray technique recommendation per pool type + size combination
+- Maps allocations against known Windows pool object sizes for adjacency targeting
+
+---
+
+#### Minifilter Callback Analysis
+**`windows/win_minifilter.py`**
+
+Parses `FLT_REGISTRATION` and `FLT_OPERATION_REGISTRATION` structures for minifilter drivers.
+
+- `FltRegisterFilter` detection and registration structure resolution
+- Pre/post callback enumeration per `IRP_MJ_*` code
+- Buffer validation analysis on `PFLT_CALLBACK_DATA` handlers
+- IRQL awareness and reentrancy safety checks
+- `FltObjects` parameter usage tracking
+
+---
+
+#### Exploit Chain Detection
+**`windows/win_chain.py`**
+
+Identifies viable exploit chains from combined driver capabilities.
+
+- Capability graph model: `INFO_LEAK`, `ARB_READ`, `ARB_WRITE`, `PHYS_MAP`, `CODE_EXEC`, `MSR_RW`, `PORT_IO`, `CR_ACCESS`, `TOKEN_SWAP`, `POOL_CORRUPT`
+- Chain path detection: Read+Write → LPE, MSR → LSTAR hijack, PhysMem → PTE manipulation, Port IO → PCI config
+- Sequences primitives in correct exploitation order
+- HVCI-aware: steers toward data-only attacks when code exec is blocked
+
+---
+
+#### Generate Report (JSON + SARIF)
+**`windows/win_report.py`**
+
+Exports all findings as structured output. Saves to `~/.logs/WinDriverReports/`.
+
+- JSON output: findings, primitives, IOCTL map, IRP handlers, device names, LOLDrivers matches
+- SARIF 2.1.0 output: CWE mapping, severity, evidence (HLIL snippets), affected addresses
+- Per-finding: confidence level, primitive type, IOCTL code, remediation guidance
+- Differential analysis support: compare two runs for new/fixed/changed findings
+
+---
+
+#### Generate POC (C + Python + Rust + C# + Exploit Templates)
 **`windows/win_poc_gen.py`**
 
-Emits compilable C user-mode POC + Python `ctypes` harness for each discovered IOCTL:
+Multi-language POC scaffolding with exploit templates. Saves to `~/.logs/WinDriverPOCs/`.
 
-- Output: `~/.logs/WinDriverPOCs/<driver>-poc.c` and `<driver>-poc.py`
-- Auto-detects device path from `\Device\` / `\DosDevices\` strings
-- Per-IOCTL stub with METHOD-aware buffer sizing (BUFFERED / NEITHER / DIRECT)
-- Primitive-aware payload comments covering ~30 primitive layouts: write-what-where, arb-read, arb-increment, process R/W, MSR R/W, port IO, phys-mem, PCI config, CR/DR access, ring-0 exec (Capcom), token swap, process kill/protect, callback removal, ETW/SSDT tamper, driver load, section map, IORING chain
-- Deep classification (depth-3 callee walk + name hints) so wrapper-style handlers still get tagged
-- CLI verbs:
-  - `poc.exe` (no args) - `probe_all` sanity sweep: send zero buffer to every IOCTL, report success/winerr
-  - `poc.exe list` - print index -> IOCTL + tags
-  - `poc.exe <index>` - trigger single IOCTL
-  - `poc.exe fuzz [iters]` - structured fuzzer (interesting sizes + value patterns mixed with `os.urandom`)
-  - `poc.exe shell` / `cmd` - spawn `cmd.exe` after sending payloads (post-exploit hook)
-- Per-call telemetry: target device banner, IOCTL + in/out sizes per send, detected primitives printed per trigger
-- Python harness: `trigger(h, idx, payload=None, out_size=None)` accepts custom bytes and sizes; structured exception printing + `pause_exit` so double-click runs don't vanish
+**Output files** (up to 11 per driver):
+
+| File | Contents |
+|---|---|
+| `<driver>-poc.c` | C POC with per-IOCTL stubs, METHOD-aware buffering, primitive-tagged payloads |
+| `<driver>-poc.py` | Python `ctypes` harness with structured fuzzer and probe-all |
+| `<driver>-poc.rs` | Rust POC using `windows-sys` crate |
+| `<driver>-poc.cs` | C# P/Invoke POC for execute-assembly (Cobalt Strike, Sliver, Havoc) |
+| `<driver>-structs.h` | Auto-inferred IOCTL input buffer structures from HLIL dereference patterns |
+| `<driver>-exploit.c` | Per-primitive exploit templates (LSTAR hijack, PCI config, token overwrite, etc.) |
+| `<driver>-shellcode.h` | PIC kernel shellcode: token steal, privilege enable, PPL bypass, ETW blind, DSE disable |
+| `<driver>-eprocess-finder.c` | EPROCESS/token locator with hardcoded offset table |
+| `<driver>-eprocess-finder-v2.c` | v2 finder: HVCI detection, `EnumDeviceDrivers` fallback, Win11 24H2 offsets |
+| `<driver>-probe-safe.c` | Crash-safe IOCTL probing via child-process isolation |
+| `<driver>-chain.c` | Exploit chain orchestrator when viable multi-primitive chain detected |
+
+**Primitive classification** uses HLIL intrinsic matching (`__rdmsr`, `__wrmsr`, `__in_*`, `__out_*`, `MmMapIoSpace`, `HalGetBusDataByOffset`, etc.), depth-3 callee walk, and ~80 name-hint patterns. Covers ~30 primitive types: write-what-where, arb-read, arb-increment, MSR R/W, port IO, phys-mem, PCI config, CR/DR access, ring-0 exec, token swap, process kill/protect, callback removal, ETW/SSDT tamper, driver load, section map, IORING chain.
+
+**CLI verbs** (C POC):
+- `poc.exe` - `probe_all`: send zero buffer to every IOCTL, report success/winerr
+- `poc.exe list` - print IOCTL index with tags
+- `poc.exe <index>` - trigger single IOCTL
+- `poc.exe fuzz [iters]` - structured fuzzer
+- `poc.exe shell` / `cmd` - spawn `cmd.exe` post-exploit
+
+---
+
+### Shared Utilities
+
+#### Taint Tracker
+**`shared/taint.py`**
+
+Lightweight HLIL SSA-based taint propagation for kernel driver analysis.
+
+- Marks IOCTL input sources as tainted: `SystemBuffer`, `Type3InputBuffer`, `UserBuffer`, `InputBufferLength`
+- Propagates through assignments, casts, arithmetic, function call arguments
+- Flags dangerous sinks reached by tainted values without validation: `memcpy` dst/size, `MmMapIoSpace` addr/size, `__wrmsr` index/value, pointer write destinations, `ExAllocatePool` size
+- Used internally by vulnerability finders for improved accuracy over text-proximity checks
 
 ---
 
