@@ -249,6 +249,7 @@ def _detect_capabilities(bv):
                 '__readcr': CAP_CR_ACCESS, '__writecr': CAP_CR_ACCESS,
                 '__inbyte': CAP_PORT_IO, '__outbyte': CAP_PORT_IO,
                 '__indword': CAP_PORT_IO, '__outdword': CAP_PORT_IO,
+                '__in_': CAP_PORT_IO, '__out_': CAP_PORT_IO,
             }
             for api, cap in api_caps.items():
                 if api in combined:

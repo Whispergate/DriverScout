@@ -224,3 +224,4 @@ analyze_pe.py
 winring0.sys
 .mcp.json
 HEVD.sys
+.claude/settings.json
