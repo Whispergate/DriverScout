@@ -98,6 +98,25 @@ _NAME_TAG_MAP = {
 }
 
 
+_HLIL_INTRINSIC_TAGS = {
+    '__rdmsr': 'msr_rw', '__wrmsr': 'msr_rw',
+    '_rdpmc': 'msr_rw',
+    '__in_': 'port_io', '__out_': 'port_io',
+    '__inbyte': 'port_io', '__outbyte': 'port_io',
+    '__indword': 'port_io', '__outdword': 'port_io',
+    '__inword': 'port_io', '__outword': 'port_io',
+    'MmMapIoSpace': 'phys_mem', 'MmMapIoSpaceEx': 'phys_mem',
+    'MmCopyMemory': 'phys_mem',
+    'ZwMapViewOfSection': 'phys_mem',
+    'HalGetBusDataByOffset': 'pci_config', 'HalSetBusDataByOffset': 'pci_config',
+    'HalGetBusData': 'pci_config', 'HalSetBusData': 'pci_config',
+    '__readcr': 'cr_access', '__writecr': 'cr_access',
+    '__readdr': 'cr_access', '__writedr': 'cr_access',
+    '__sidt': 'cr_access', '__lidt': 'cr_access',
+    '__sgdt': 'cr_access', '__lgdt': 'cr_access',
+}
+
+
 def _classify(text, bv=None, instrs=None):
     tags = []
     if _detect_write_what_where(text):   tags.append('write_what_where')
@@ -108,6 +127,10 @@ def _classify(text, bv=None, instrs=None):
     if _detect_double_fetch(text):       tags.append('double_fetch')
     if _detect_null_deref(text):         tags.append('null_deref')
     if _detect_ioring(text):             tags.append('ioring')
+    # Direct HLIL intrinsic/API detection
+    for needle, tag in _HLIL_INTRINSIC_TAGS.items():
+        if needle in text and tag not in tags:
+            tags.append(tag)
     if bv is not None and instrs is not None:
         for _sev, label in _detect_name_hints(bv, instrs):
             ll = label.lower()
