@@ -44,6 +44,21 @@ class EprocessOffsets:
 # ---------------------------------------------------------------------------
 
 EPROCESS_OFFSETS = [
+    # Windows 11 26H1 (build 28000+) - new devices only, separate branch
+    EprocessOffsets(build=28000, pid=0x440, links=0x448, token=0x4b8,
+                    sig_level=0x878, protection=0x87a, vadroot=0x7d8, peb=0x4a8,
+                    hvci_aware=True, name="Win11 26H1"),
+
+    # Windows 11 26H2 (build 26300+)
+    EprocessOffsets(build=26300, pid=0x440, links=0x448, token=0x4b8,
+                    sig_level=0x878, protection=0x87a, vadroot=0x7d8, peb=0x4a8,
+                    hvci_aware=True, name="Win11 26H2"),
+
+    # Windows 11 25H2 (build 26200+)
+    EprocessOffsets(build=26200, pid=0x440, links=0x448, token=0x4b8,
+                    sig_level=0x878, protection=0x87a, vadroot=0x7d8, peb=0x4a8,
+                    hvci_aware=True, name="Win11 25H2"),
+
     # Windows 11 24H2 (build 26100+)
     EprocessOffsets(build=26100, pid=0x440, links=0x448, token=0x4b8,
                     sig_level=0x878, protection=0x87a, vadroot=0x7d8, peb=0x4a8,
