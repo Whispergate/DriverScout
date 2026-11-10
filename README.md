@@ -203,8 +203,16 @@ Full static triage for Windows kernel drivers. Saves report to `~/.logs/WinDrive
 | Control/Debug Register Access (`__readcr*` / `__writecr*` / `__readdr*` / `__writedr*`) | CRITICAL |
 | Ring-0 Exec / Capcom-style (`(*(fn*)SystemBuffer)()` user-pointer call in kernel) | CRITICAL |
 | PCI Config Space Access (`HalGetBusData` / `HalSetBusData`) | HIGH |
+| Virtual Memory R/W (`ZwReadVirtualMemory`, `MmCopyVirtualMemory`, ...) | CRITICAL |
+| MDL Kernel-to-User Map (`IoAllocateMdl` + `MmMapLockedPages`) | CRITICAL |
+| Handle Duplication (`ZwDuplicateObject`, `ObDuplicateObject`) | HIGH |
+| Section-Based Physical Memory (`ZwOpenSection` + `ZwMapViewOfSection`) | CRITICAL |
+| Callback Removal / EDR Blinding (`PsSetCreateProcessNotifyRoutine`, `ObUnRegisterCallbacks`) | HIGH |
+| Process/Thread Manipulation (`ZwTerminateProcess`, `NtSetContextThread`) | HIGH |
+| DSE/CI Bypass (`g_CiOptions`, `CiValidateImageHeader`) | CRITICAL |
+| ETW Tampering (`EtwEventWrite`, `NtTraceControl`) | HIGH |
 
-Name-hint pass walks IOCTL handler callees (depth 3, dedup, skips `sub_*` / `nullsub_*` / `j_*`) and matches descriptive function names against ~80 BYOVD primitive patterns: `ReadKernel`, `WriteVirtual`, `ArbitraryIncrement`, `TerminateProcess`, `ProtectProcess`, `SwapToken`, `PatchEtw`, `HookSsdt`, `MapDriver`, `MapSection`, etc. Each hit emitted with severity + `:: <fn name>` for triage.
+23 runtime detectors + name-hint pass (depth 3, dedup, skips `sub_*` / `nullsub_*` / `j_*`) against ~80 BYOVD primitive patterns. Each hit emitted with severity + `:: <fn name>` for triage.
 
 ---
 
@@ -215,8 +223,8 @@ Classifies each IOCTL handler against the HackSysExtremeVulnerableDriver bug-cla
 
 Extended privileged-primitive classes (BYOVD coverage): **MSRReadWrite**, **PortIO**, **PhysicalMemoryMap**, **ControlRegisterAccess**, **Ring0Exec**, plus name-hint classes **TokenManipulation**, **ProcessTampering**, **CallbackTampering**, **EtwTampering**, **SsdtTampering**, **DriverLoadPrimitive**, **PciConfigAccess**.
 
-- HLIL pattern detectors + recursive callee walk (depth 3, ~16/level)
-- Name-hint pass against ~70 substrings - matches handler names like `TriggerArbitraryWrite`, `MsrWrite64`, `WriteCr4`, `MapPhysicalAddress`, `EnableShellcodeExec`, `UnregisterCallback`, `DisableThreatIntel`
+- 23 HLIL pattern detectors + recursive callee walk (depth 3, ~16/level)
+- Name-hint pass against ~80 substrings - matches handler names like `TriggerArbitraryWrite`, `MsrWrite64`, `WriteCr4`, `MapPhysicalAddress`, `EnableShellcodeExec`, `UnregisterCallback`, `DisableThreatIntel`
 
 Useful for CTFs, training, and triaging unknown drivers against known exploit classes (ref: p.ost2.fyi).
 
@@ -229,7 +237,7 @@ Cross-references binary against [loldrivers.io](https://www.loldrivers.io/) data
 
 - SHA256 file-hash lookup against live API (cached 7d at `~/.cache/loldrivers/drivers.json`)
 - Original-filename / on-disk filename match
-- IOCTL-overlap match against embedded curated DB (~25 high-impact entries: RTCore64, gdrv, AsrDrv, dbutil_2_3, Capcom, mhyprot2, WinRing0, iqvw64, Dell PCDoctor, ...)
+- IOCTL-overlap match against embedded curated DB (~37 high-impact entries: RTCore64, gdrv, AsrDrv, dbutil_2_3, Capcom, mhyprot2, WinRing0, iqvw64, Dell PCDoctor, nvoclock, atillk64, elrawdsk, winio64, dbk64, ene, inpoutx64, hwrwdrv, ...)
 - Device-name lexical match to known vulnerable drivers
 - Fallback to embedded mini-DB if network + cache unavailable
 
@@ -345,8 +353,8 @@ Parses `FLT_REGISTRATION` and `FLT_OPERATION_REGISTRATION` structures for minifi
 
 Identifies viable exploit chains from combined driver capabilities.
 
-- Capability graph model: `INFO_LEAK`, `ARB_READ`, `ARB_WRITE`, `PHYS_MAP`, `CODE_EXEC`, `MSR_RW`, `PORT_IO`, `CR_ACCESS`, `TOKEN_SWAP`, `POOL_CORRUPT`
-- Chain path detection: Read+Write → LPE, MSR → LSTAR hijack, PhysMem → PTE manipulation, Port IO → PCI config
+- Capability graph model: `INFO_LEAK`, `ARB_READ`, `ARB_WRITE`, `PHYS_MAP`, `CODE_EXEC`, `MSR_RW`, `PORT_IO`, `CR_ACCESS`, `TOKEN_SWAP`, `POOL_CORRUPT`, `VMEM_RW`, `HANDLE_DUP`, `CALLBACK_RM`, `DSE_BYPASS`, `ETW_TAMPER`, `MDL_MAP`
+- 20 chain definitions: Read+Write → LPE, MSR → LSTAR hijack, PhysMem → PTE manipulation, Port IO → PCI config, VMemRW → token overwrite (HVCI-safe), MDL map → kernel access, Handle dup → privilege escalation, Callback+Write → EDR blind + LPE, DSE bypass → unsigned driver load, ETW+Callback → full EDR/ETW blind
 - Sequences primitives in correct exploitation order
 - HVCI-aware: steers toward data-only attacks when code exec is blocked
 
@@ -369,7 +377,7 @@ Exports all findings as structured output. Saves to `~/.logs/WinDriverReports/`.
 
 Multi-language POC scaffolding with exploit templates. Saves to `~/.logs/WinDriverPOCs/`.
 
-**Output files** (up to 11 per driver):
+**Output files** (up to 12 per driver):
 
 | File | Contents |
 |---|---|
@@ -379,11 +387,19 @@ Multi-language POC scaffolding with exploit templates. Saves to `~/.logs/WinDriv
 | `<driver>-poc.cs` | C# P/Invoke POC for execute-assembly (Cobalt Strike, Sliver, Havoc) |
 | `<driver>-structs.h` | Auto-inferred IOCTL input buffer structures from HLIL dereference patterns |
 | `<driver>-exploit.c` | Per-primitive exploit templates (LSTAR hijack, PCI config, token overwrite, etc.) |
+| `<driver>-trampoline.asm` | MASM x64 syscall trampoline: `DoKernelWrite8`/`DoKernelRead8` via LSTAR ROP chain + iretq return |
 | `<driver>-shellcode.h` | PIC kernel shellcode: token steal, privilege enable, PPL bypass, ETW blind, DSE disable |
 | `<driver>-eprocess-finder.c` | EPROCESS/token locator with hardcoded offset table |
 | `<driver>-eprocess-finder-v2.c` | v2 finder: HVCI detection, `EnumDeviceDrivers` fallback, Win11 24H2 offsets |
 | `<driver>-probe-safe.c` | Crash-safe IOCTL probing via child-process isolation |
 | `<driver>-chain.c` | Exploit chain orchestrator when viable multi-primitive chain detected |
+
+**Driver-agnostic MSR elevation architecture** (emitted when MSR R/W primitives detected):
+- Bottom layer: `ReadMSR()`/`WriteMSR()` - thin IOCTL wrappers (only driver-specific code)
+- Middle layer: `InitWritePrimitive()`/`InitReadPrimitive()` - scans ntoskrnl .text for ROP gadgets (`pop rcx;ret`, `pop rax;ret`, `pop rdx;ret`, `wrmsr;ret`, `iretq`, `mov [rdx],rax;ret`, `mov rax,[rdx];ret`)
+- Top layer: `WriteKernel8()`/`ReadKernel8()` - calls MASM trampoline procs that hijack LSTAR, execute ROP chain in ring-0, return via iretq
+- FMASK clearing (MSR 0xC0000084) for SMAP bypass, thread affinity pinning + REALTIME priority for race window minimization
+- Build: `ml64 /c /Fo trampoline.obj <driver>-trampoline.asm` then `cl poc.c trampoline.obj`
 
 **Primitive classification** uses HLIL intrinsic matching (`__rdmsr`, `__wrmsr`, `__in_*`, `__out_*`, `MmMapIoSpace`, `HalGetBusDataByOffset`, etc.), depth-3 callee walk, and ~80 name-hint patterns. Covers ~30 primitive types: write-what-where, arb-read, arb-increment, MSR R/W, port IO, phys-mem, PCI config, CR/DR access, ring-0 exec, token swap, process kill/protect, callback removal, ETW/SSDT tamper, driver load, section map, IORING chain.
 
@@ -405,7 +421,7 @@ Lightweight HLIL SSA-based taint propagation for kernel driver analysis.
 
 - Marks IOCTL input sources as tainted: `SystemBuffer`, `Type3InputBuffer`, `UserBuffer`, `InputBufferLength`
 - Propagates through assignments, casts, arithmetic, function call arguments
-- Flags dangerous sinks reached by tainted values without validation: `memcpy` dst/size, `MmMapIoSpace` addr/size, `__wrmsr` index/value, pointer write destinations, `ExAllocatePool` size
+- Flags dangerous sinks reached by tainted values without validation: `memcpy` dst/size, `MmMapIoSpace` addr/size, `__wrmsr` index/value, pointer write destinations, `ExAllocatePool` size, `ZwReadVirtualMemory`, `ZwWriteVirtualMemory`, `MmCopyVirtualMemory`, `ZwDuplicateObject`, `IoAllocateMdl`, `ZwTerminateProcess`, `PsSetCreateProcessNotifyRoutine`
 - Used internally by vulnerability finders for improved accuracy over text-proximity checks
 
 ---

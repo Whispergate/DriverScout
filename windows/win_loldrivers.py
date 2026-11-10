@@ -148,6 +148,76 @@ _EMBEDDED = {
         'ioctls': [0x9C402AC0, 0x9C402AC4, 0x9C402AC8],
         'note': 'PhyMem.sys / variants.',
     },
+    'nvoclock.sys': {
+        'tags': ['EVGA', 'MSR R/W', 'phys R/W'],
+        'ioctls': [0x2200A0, 0x2200A4, 0x2200A8],
+        'note': 'EVGA OC / NVIDIA overclocking utility.',
+    },
+    'atillk64.sys': {
+        'tags': ['ATI/AMD', 'phys R/W', 'port IO'],
+        'ioctls': [0x9C402000, 0x9C402004, 0x9C402008],
+        'note': 'CVE-2023-20598. AMD ATI diagnostics.',
+    },
+    'elrawdsk.sys': {
+        'tags': ['EldoS RawDisk', 'raw disk R/W'],
+        'ioctls': [0x22240C, 0x222408, 0x222400],
+        'note': 'Used in Shamoon destructive attacks.',
+    },
+    'winio64.sys': {
+        'tags': ['WinIO', 'port IO', 'phys R/W'],
+        'ioctls': [0x9C402580, 0x9C402584, 0x9C402588],
+        'note': 'WinIO library driver. Common OEM dependency.',
+    },
+    'dbk64.sys': {
+        'tags': ['Cheat Engine', 'process R/W', 'kernel exec'],
+        'ioctls': [0xAA012044, 0xAA012048, 0xAA01204C, 0xAA012050],
+        'note': 'Cheat Engine kernel driver. Full process manipulation.',
+    },
+    'vboxdrv.sys': {
+        'tags': ['VirtualBox', 'ring-0 exec'],
+        'ioctls': [0x90002000, 0x90002004, 0x90002008],
+        'note': 'Oracle VirtualBox kernel support driver.',
+    },
+    'gmer64.sys': {
+        'tags': ['GMER', 'kernel mem R/W'],
+        'ioctls': [0x9C402100, 0x9C402104],
+        'note': 'GMER anti-rootkit driver.',
+    },
+    'zemana.sys': {
+        'tags': ['Zemana', 'arbitrary process handle'],
+        'ioctls': [0x80002010, 0x80002014],
+        'note': 'CVE-2021-31728. Zemana AntiMalware.',
+    },
+    'ene.sys': {
+        'tags': ['ENE Technology', 'phys R/W'],
+        'ioctls': [0x9C40A010, 0x9C40A014, 0x9C40A018],
+        'note': 'ENE Technology RGB/fan controller driver.',
+    },
+    'inpoutx64.sys': {
+        'tags': ['InpOut32', 'port IO'],
+        'ioctls': [0x9C402090, 0x9C402094],
+        'note': 'InpOut32/64 direct port access.',
+    },
+    'hwrwdrv.sys': {
+        'tags': ['HW Read Write', 'phys R/W', 'MSR'],
+        'ioctls': [0x9C402088, 0x9C40208C],
+        'note': 'Generic HW read/write utility driver.',
+    },
+    'etdsupp.sys': {
+        'tags': ['ELAN', 'phys R/W'],
+        'ioctls': [0x222400, 0x222404],
+        'note': 'ELAN touchpad support driver.',
+    },
+    'nicm.sys': {
+        'tags': ['Novell', 'arbitrary R/W'],
+        'ioctls': [0x143B6B00, 0x143B6B04],
+        'note': 'CVE-2013-3956. Novell Client.',
+    },
+    'amsdk.sys': {
+        'tags': ['AMD', 'MSR R/W'],
+        'ioctls': [0x9C402488, 0x9C40248C],
+        'note': 'AMD SDK / diagnostic driver.',
+    },
 }
 
 
@@ -248,19 +318,20 @@ def _file_sha256(path):
 
 def _collect_ioctls(bv):
     try:
-        from .win_vuln_finder import _find_dispatch_routines, _find_ioctls
+        from ..shared.dispatch import find_dispatch_routines
+        from ..shared.ioctl_shared import find_ioctls_in_func
     except Exception as e:
-        log_warn("[loldrivers] vuln_finder import failed: {}".format(e))
+        log_warn("[loldrivers] shared import failed: {}".format(e))
         return set()
     codes = set()
     try:
-        dispatchers = _find_dispatch_routines(bv)
+        dispatchers = find_dispatch_routines(bv)
     except Exception as e:
         log_warn("[loldrivers] dispatcher scan failed: {}".format(e))
         return codes
     for df in dispatchers:
         try:
-            for c in _find_ioctls(df):
+            for c in find_ioctls_in_func(df):
                 codes.add(c & 0xFFFFFFFF)
         except Exception:
             continue
@@ -395,7 +466,10 @@ class _LolTask(BackgroundTaskThread):
         if dnames:
             emit("[>] Device names: {}".format(", ".join(sorted(dnames))))
             kw = ['rtcore', 'gdrv', 'asrdrv', 'mhyprot', 'capcom',
-                  'winring0', 'phymem', 'speedfan', 'dbutil', 'iqvw']
+                  'winring0', 'phymem', 'speedfan', 'dbutil', 'iqvw',
+                  'winio', 'rawdisk', 'dbk', 'vbox', 'gmer', 'zemana',
+                  'ene', 'inpout', 'hwrw', 'etdsup', 'nvoclock', 'atillk',
+                  'nicm', 'amsdk', 'ntiolib']
             suspicious = [n for n in dnames if any(k in n.lower() for k in kw)]
             if suspicious:
                 emit("    [WARN] Device-name lexical match to known vuln drivers: {}".format(

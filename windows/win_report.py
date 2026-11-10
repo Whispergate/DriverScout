@@ -20,11 +20,16 @@ from binaryninja import BinaryView, log_info, log_warn
 from binaryninja.plugin import PluginCommand, BackgroundTaskThread
 
 from ..shared.helpers import get_hlil_text, get_callers
+from ..shared.dispatch import find_dispatch_routines
+from ..shared.ioctl_shared import (
+    find_ioctls_in_func, ctl_decode, METHOD_MAP, ACCESS_MAP,
+    ioctl_branches_for_dispatcher, resolve_callee_name,
+)
+from ..shared.attack_mapping import (
+    map_primitive_to_mitre, generate_sigma_rule, generate_yara_rule, PRIMITIVE_TO_MITRE,
+)
 from .win_vuln_finder import (
-    _find_dispatch_routines, _ioctl_branches_for_dispatcher,
-    _find_ioctls, _ctl_decode, METHOD_MAP, ACCESS_MAP,
-    _classify_branch_vulns, _resolve_callee_name,
-    _collect_pooltags, _looks_user_driven_win, _is_ioctl_context,
+    _classify_branch_vulns, _collect_pooltags, _looks_user_driven_win,
 )
 
 # CWE mapping for detected vulnerability classes
@@ -86,9 +91,9 @@ def _collect_device_names(bv):
 def _collect_ioctl_map(bv):
     ioctls = []
     seen = set()
-    dispatchers = _find_dispatch_routines(bv)
+    dispatchers = find_dispatch_routines(bv)
     for df in dispatchers:
-        branches = _ioctl_branches_for_dispatcher(df)
+        branches = ioctl_branches_for_dispatcher(df)
         by_code = {}
         for code, instrs, addr in branches:
             by_code.setdefault(code, []).extend(instrs)
@@ -96,9 +101,9 @@ def _collect_ioctl_map(bv):
             if code in seen:
                 continue
             seen.add(code)
-            d = _ctl_decode(code)
+            d = ctl_decode(code)
             vulns, callees = _classify_branch_vulns(bv, instrs)
-            callee_names = sorted({_resolve_callee_name(bv, c) for c in callees})
+            callee_names = sorted({resolve_callee_name(bv, c) for c in callees})
             ioctls.append({
                 'code': '0x{:08X}'.format(code),
                 'code_int': code,
@@ -118,15 +123,15 @@ def _collect_findings(bv):
     findings = []
     finding_id = 0
 
-    dispatchers = _find_dispatch_routines(bv)
+    dispatchers = find_dispatch_routines(bv)
     for df in dispatchers:
-        branches = _ioctl_branches_for_dispatcher(df)
+        branches = ioctl_branches_for_dispatcher(df)
         by_code = {}
         for code, instrs, addr in branches:
             by_code.setdefault(code, []).extend(instrs)
         for code, instrs in by_code.items():
             vulns, callees = _classify_branch_vulns(bv, instrs)
-            d = _ctl_decode(code)
+            d = ctl_decode(code)
             method = METHOD_MAP.get(d['method'], str(d['method']))
             for vlabel in vulns:
                 finding_id += 1

@@ -17,7 +17,8 @@ from binaryninja import BinaryView, log_info, log_warn
 from binaryninja.plugin import PluginCommand
 
 from ..shared.helpers import get_hlil_text, get_callers, get_mlil_text, const_value
-from .win_vuln_finder import _find_dispatch_routines, _ioctl_branches_for_dispatcher, _ctl_decode
+from ..shared.dispatch import find_dispatch_routines as _find_dispatch_routines
+from ..shared.ioctl_shared import ioctl_branches_for_dispatcher as _ioctl_branches_for_dispatcher, ctl_decode as _ctl_decode
 
 # Pool types
 _POOL_TYPES = {

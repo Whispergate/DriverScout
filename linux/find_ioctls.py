@@ -26,7 +26,7 @@ import re
 from binaryninja import BinaryView, log_info, log_warn
 from binaryninja.plugin import PluginCommand
 
-from ..shared.helpers import get_hlil_text, plausible_linux_ioctl, format_ioctl, decode_linux_ioctl
+from ..shared.helpers import get_hlil_text, plausible_linux_ioctl, format_linux_ioctl, decode_linux_ioctl
 
 # ---------------------------------------------------------------------------
 # Regex patterns for IOCTL constants in HLIL text
@@ -112,7 +112,7 @@ def _analyze_ioctl_handler(hlil_text, code):
 def _print_ioctl(idx, code, analysis):
     d = decode_linux_ioctl(code)
     type_ch = chr(d['type']) if 0x20 <= d['type'] <= 0x7E else '?'
-    log_info("\n  [{:02d}] {}".format(idx, format_ioctl(code)))
+    log_info("\n  [{:02d}] {}".format(idx, format_linux_ioctl(code)))
     flags = []
     if not analysis['has_copy_from'] and not analysis['has_copy_to']:
         flags.append("no user copy detected")

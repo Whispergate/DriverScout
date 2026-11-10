@@ -1,4 +1,4 @@
-"""
+r"""
 Binary Ninja plugin - Find Windows device names in kernel drivers.
 
 Detects: \Device\, \DosDevices\, \\.\, \??\  patterns via:

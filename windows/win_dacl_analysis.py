@@ -1,4 +1,4 @@
-"""
+r"""
 Binary Ninja plugin - DACL / Security Descriptor analysis.
 
 Parses SDDL strings from IoCreateDeviceSecure calls and manual security

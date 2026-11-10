@@ -15,7 +15,7 @@
         "Linux": "Copy the plugin directory into ~/.binaryninja/plugins/",
         "Windows": "Copy the plugin directory into %APPDATA%\\Binary Ninja\\plugins\\"
     },
-    "version": "1.0.0",
+    "version": "1.1.0",
     "author": "Lavender-exe",
-    "minimumbinaryninjaversion": 3164
+    "minimumbinaryninjaversion": 6000
 }
