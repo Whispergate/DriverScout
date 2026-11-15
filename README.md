@@ -4,7 +4,7 @@ Static analysis plugins for Binary Ninja targeting Linux and Windows kernel driv
 
 ## Installation
 
-Copy the `BinjaKernelTools/` directory into your Binary Ninja plugins folder:
+Copy the `DriverScout/` directory into your Binary Ninja plugins folder:
 
 | Platform | Path |
 |---|---|
