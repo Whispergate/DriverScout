@@ -1,4 +1,4 @@
-# BinjaKernelTools
+# DriverScout
 
 Static analysis plugins for Binary Ninja targeting Linux and Windows kernel driver vulnerability research.
 
